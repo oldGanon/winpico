@@ -308,6 +308,9 @@ Win32_LoadXInput()
 {
     HMODULE XInputLibrary = LoadLibraryA("xinput1_4.dll");
 
+    if(!XInputLibrary)
+        XInputLibrary = LoadLibraryA("xinput1_3.dll");
+    
     if (XInputLibrary)
     {
         XInputGetState = (x_input_get_state *)GetProcAddress(XInputLibrary, "XInputGetState");
@@ -490,6 +493,7 @@ Win32_CollectInput()
                 {
                     switch (VKCode)
                     {
+                        case 'Y': { Win32_UpdateKey(0, BUTTON_BIT_CIRCLE, IsDown); } break;
                         case 'Z': { Win32_UpdateKey(0, BUTTON_BIT_CIRCLE, IsDown); } break;
                         case 'X': { Win32_UpdateKey(0, BUTTON_BIT_CROSS,  IsDown); } break;
                         case 'C': { Win32_UpdateKey(0, BUTTON_BIT_CIRCLE, IsDown); } break;

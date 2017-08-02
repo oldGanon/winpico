@@ -192,8 +192,11 @@ LoadSfxFile(wchar_t *Filename)
 
         u32 SampleCount = (u32)(SampleDataSize / SampleSize);
         i16 *LastSample = SampleData + SampleCount - 1;
-        while (*LastSample-- == 0)
+        while (*LastSample == 0 || *LastSample == -1)
+        {
             --SampleCount;
+            --LastSample;
+        }
         SampleDataSize = (u32)(SampleCount * SampleSize);
     
         u8 *SfxMemory = (u8 *)VirtualAlloc(0, sizeof(u32) + SampleDataSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);

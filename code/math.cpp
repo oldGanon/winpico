@@ -4,6 +4,7 @@
 
 #define MIN(a,b) ((a<b)?a:b)
 #define MAX(a,b) ((a>b)?a:b)
+#define CLAMP(r,a,b) ((r<a)?a:(r>b)?b:r)
 
 static int
 Pico_band(lua_State *L)

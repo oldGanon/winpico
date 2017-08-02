@@ -23,10 +23,16 @@ Pico_sfx(lua_State *L)
     i16 n = lua_tonumber(L, 1).i;
     if (n < 0 || n > 63) return 0;
 
+    sfx *Sfx = SfxTable[n];
+
+    for (i16 c = 0; c < 4; ++c)
+        if (Channels[c].Sfx == Sfx)
+            return 0;
+
     if (args > 1)
     {
         i16 c =  lua_tonumber(L, 2).i;
-        Channels[c].Sfx = SfxTable[n];
+        Channels[c].Sfx = Sfx;
 		Channels[c].Samples = 0;
         return 0;
     }
@@ -36,7 +42,7 @@ Pico_sfx(lua_State *L)
         {
             if (!Channels[c].Sfx)
             {
-			    Channels[c].Sfx = SfxTable[n];
+			    Channels[c].Sfx = Sfx;
 			    Channels[c].Samples = 0;
                 return 0;
             }
@@ -74,7 +80,8 @@ Audio_OutputSamples(game_sound_output *SoundBuffer)
         u32 SampesToWrite = MIN(SoundBuffer->SampleCount, SamplesLeft);
         while (SampesToWrite--)
         {
-        	i16 Sample = Channel->Sfx->Samples[Channel->Samples++] / 4;
+        	i32 Sample32 = (i32)Channel->Sfx->Samples[Channel->Samples++] + *Samples;
+            i16 Sample = (i16)CLAMP(Sample32, -32768, 32767);
         	*Samples++ += Sample;
         	*Samples++ += Sample;
 
