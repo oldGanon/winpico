@@ -2,7 +2,7 @@
 
 REM -Od disable Optimization
 REM -O2 Optimization (Release Mode)
-set CommonCompilerFlags=-MT -nologo -Gm- -GR- -EHa- -Od -Oi -W4 -wd4201 -wd4100 -wd4189 -wd4505 -FC -Z7
+set CommonCompilerFlags=-MT -nologo -Gm- -EHa- -O2 -Oi -W4 -wd4201 -wd4100 -wd4189 -wd4505 -FC
 set CommonLinkerFlags=-opt:ref /LIBPATH:"..\lib" picolua.lib user32.lib gdi32.lib winmm.lib icon.res
 
 cd %~dp0
@@ -17,9 +17,9 @@ robocopy "..\misc" "..\build" icon.res /njh /njs
 :skiprc
 
 REM 64-bit build
-cl -DEXE_SIZE=0 %CommonCompilerFlags% ..\code\win32.cpp -Fmwin32.map /I..\include /link -subsystem:windows %CommonLinkerFlags%
+cl -DEXE_SIZE=0 %CommonCompilerFlags% ..\code\win32.cpp /I..\include /link -subsystem:windows %CommonLinkerFlags%
 call :getfilesize win32.exe
-cl -DEXE_SIZE=%filesize% %CommonCompilerFlags% ..\code\win32.cpp -Fmwin32.map /I..\include /link -subsystem:windows %CommonLinkerFlags%
+cl -DEXE_SIZE=%filesize% %CommonCompilerFlags% ..\code\win32.cpp /I..\include /link -subsystem:windows %CommonLinkerFlags%
 
 call sfx_packer
 call exe_packer

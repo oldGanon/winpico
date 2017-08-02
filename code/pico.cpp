@@ -94,7 +94,7 @@ Pico_PackedGet(u8 *Data, u32 Offset)
 #include "graphics.cpp"
 #include "coroutine.cpp"
 #include "table.cpp"
-#include "audio.cpp"
+#include "audio_xxx.cpp"
 
 //
 // INPUT

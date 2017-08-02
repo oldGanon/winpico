@@ -220,7 +220,8 @@ int main(int argc, char *args)
         if (!Data)
             return 1;
 
-        u32 DataSize = *(u32 *)Data + sizeof(u32);
+        u32 SampleCount = *(u32 *)Data;
+        u32 DataSize = SampleCount * sizeof(i16) + sizeof(u32);
         DWORD FilePos = SetFilePointer(SfxFile, 0, 0, FILE_END);
         LockFile(SfxFile, FilePos, 0, DataSize, 0);
         WriteFile(SfxFile, Data, DataSize, 0, 0);

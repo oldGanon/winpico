@@ -153,12 +153,10 @@ Win32_LoadEntireFile(const char* Filename)
 }
 
 static lua_State*
-Win32_LoadCart(char *Filename)
+Win32_LoadCart(char *Cart)
 {
     lua_State *L = luaL_newstate();
-    char *Cart = (char *)Win32_LoadEntireFile(Filename);
     Pico_Init(L, Cart);
-    Win32_FreeMemory(Cart);
     return L;
 }
 
@@ -698,13 +696,56 @@ Win32_WindowCallback(HWND Window,
     return Result;
 }
 
+static b8
+Win32_Load(char **Cart, u8 **Sfx)
+{
+    u8 *Data;
+    DWORD DataSize;
+    wchar_t EXEPath[MAX_PATH];
+    GetModuleFileNameW(0, EXEPath, sizeof(EXEPath));
+    HANDLE FileHandle = CreateFileW(EXEPath, GENERIC_READ, FILE_SHARE_READ, 0, 
+                                    OPEN_EXISTING, 0, 0);
+    if (FileHandle != INVALID_HANDLE_VALUE)
+    {
+        LARGE_INTEGER FileSize;
+        if (GetFileSizeEx(FileHandle, &FileSize))
+        {
+            DataSize = (u32)(FileSize.QuadPart - ExeSize);
+            Data = (u8 *)VirtualAlloc(0, DataSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+            DWORD BytesRead;
+            OVERLAPPED Overlapped = {};
+            Overlapped.Offset     = (u32)((ExeSize >> 0) & 0xFFFFFFFF);
+            Overlapped.OffsetHigh = (u32)((ExeSize >> 32) & 0xFFFFFFFF);
+            if (ReadFile(FileHandle, Data, DataSize, &BytesRead, &Overlapped) && 
+                (DataSize == BytesRead))
+            {
+                *Cart = (char *)Data;
+                while (*Data++)
+                    --DataSize;
+                *Sfx = (u8 *)Data;
+
+                return true;
+            }
+            else
+            {
+                Win32_FreeMemory(Data);
+            }
+        }
+    }
+    return false;
+}
+
 int CALLBACK
 WinMain(HINSTANCE Instance,
         HINSTANCE PrevInstance,
         LPSTR CommandLine,
         int ShowCode)
 {
-    lua_State *L = Win32_LoadCart("cart.p8");
+    u8 *Sfx;
+    char *Cart;
+    Win32_Load(&Cart, &Sfx);
+    Audio_LoadSfx(Sfx);
+    lua_State *L = Win32_LoadCart(Cart);
  
     Win32_LoadXInput();
 
@@ -739,7 +780,7 @@ WinMain(HINSTANCE Instance,
             CreateWindowExA(
                 0,
                 WindowClass.lpszClassName,
-                "win-pico",
+                "lemonhunter",
                 WS_OVERLAPPEDWINDOW|WS_VISIBLE,
                 CW_USEDEFAULT, CW_USEDEFAULT,
                 WindowDimension.right - WindowDimension.left,
