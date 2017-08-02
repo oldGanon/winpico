@@ -16,7 +16,6 @@ typedef double r64;
 typedef int8_t b8;
 
 typedef size_t mi;
-typedef size_t memory_index;
 
 #define Align16(Value) ((Value + 15) & ~15)
 
@@ -35,7 +34,7 @@ struct game_sound_output
 static void Win32_Flip(b8 CalledFromLUA);
 
 #include <lua/lua.hpp>
-#include "pico.c"
+#include "pico.cpp"
 
 struct win32_sound_output
 {
@@ -74,6 +73,8 @@ static BITMAPINFO GlobalBackbufferInfo;
 static LPDIRECTSOUNDBUFFER GlobalSecondaryBuffer;
 static WINDOWPLACEMENT GlobalWindowPosition = {sizeof(GlobalWindowPosition)};
 
+static const u64 ExeSize = EXE_SIZE;
+
 // NOTE: XInputGetState
 #define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
 typedef X_INPUT_GET_STATE(x_input_get_state);
@@ -98,7 +99,7 @@ static x_input_set_state *XInputSetState_ = XInputSetStateStub;
 typedef DIRECT_SOUND_CREATE(direct_sound_create);
 
 inline void* 
-Memory_Set(void *Ptr, u8 Value, memory_index Size)
+Memory_Set(void *Ptr, u8 Value, mi Size)
 {
     u8 *Byte = (u8 *)Ptr;
     while (Size--) *Byte++ = Value;
@@ -106,7 +107,7 @@ Memory_Set(void *Ptr, u8 Value, memory_index Size)
 }
 
 inline void* 
-Memory_Copy(void *Dest, void *Source, memory_index Num)
+Memory_Copy(void *Dest, void *Source, mi Num)
 {
     u8 *DestByte = (u8 *)Dest;
     u8 *SourceByte = (u8 *)Source;
@@ -697,17 +698,14 @@ Win32_WindowCallback(HWND Window,
     return Result;
 }
 
-
 int CALLBACK
 WinMain(HINSTANCE Instance,
         HINSTANCE PrevInstance,
         LPSTR CommandLine,
         int ShowCode)
 {
-    //lua_State *L = Win32_LoadCart("vibr.p8");
-    lua_State *L = Win32_LoadCart("lemonhunter_60.p8");
-    //lua_State *L = Win32_LoadCart("circle.p8");
-
+    lua_State *L = Win32_LoadCart("cart.p8");
+ 
     Win32_LoadXInput();
 
     WNDCLASSA WindowClass = {};
@@ -771,7 +769,6 @@ WinMain(HINSTANCE Instance,
                                                      GlobalSoundOutput.BytesPerSample) / 
                                                      ((DWORD)GameUpdateHz / 4);
             Win32_InitDSound(GlobalWindow, GlobalSoundOutput.SamplesPerSecond, GlobalSoundOutput.SecondaryBufferSize);
-            
 
             LARGE_INTEGER PerfCountFrequencyResult;
             QueryPerformanceFrequency(&PerfCountFrequencyResult);
