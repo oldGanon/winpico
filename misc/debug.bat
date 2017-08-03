@@ -4,5 +4,5 @@ cd %~dp0
 cd ..
 
 pushd build
-devenv win32.exe
+devenv lemonhunter.exe
 popd build

@@ -501,7 +501,7 @@ Pico_LuaInit(lua_State *L, char *Cart)
     luaL_openlibs(L);
     
     // table
-    luaL_dostring(L, AllFunction);
+    lua_register(L, "all",   Pico_all);
     luaL_dostring(L, ForeachFunction);
     lua_register(L, "del",   Pico_del);
     lua_register(L, "add",   Pico_add);
