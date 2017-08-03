@@ -21,10 +21,8 @@ cl -DEXE_SIZE=0 %CommonCompilerFlags% ..\code\win32.cpp -Fmwin32.map /I..\includ
 call :getfilesize win32.exe
 cl -DEXE_SIZE=%filesize% %CommonCompilerFlags% ..\code\win32.cpp -Fmwin32.map /I..\include /link -subsystem:windows %CommonLinkerFlags%
 
-call sfx_packer
-call exe_packer
-
 popd
+call pack
 goto :eof
 
 :getfilesize

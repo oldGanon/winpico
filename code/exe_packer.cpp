@@ -3,21 +3,27 @@
 static void
 FileAppend(HANDLE File, void *Buffer, size_t Bytes)
 {
+    DWORD BytesWritten;
     DWORD FilePos = SetFilePointer(File, 0, 0, FILE_END);
     LockFile(File, FilePos, 0, Bytes, 0);
-    WriteFile(File, Buffer, Bytes, 0, 0);
+    WriteFile(File, Buffer, Bytes, &BytesWritten, 0);
     UnlockFile(File, FilePos, 0, Bytes, 0);
 }
 
 int main(int argc, char *args)
 {
-    HANDLE Exe = CreateFileW(L"win32.exe", FILE_APPEND_DATA, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    if (!CopyFileW(L"win32.exe", L"lemonhunter.exe", 0))
+        return 1;
+
+    HANDLE Exe = CreateFileW(L"lemonhunter.exe", FILE_APPEND_DATA, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
     HANDLE Cart = CreateFileW(L"cart.p8", GENERIC_READ, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
     HANDLE Sfx = CreateFileW(L"sfx.sfx", GENERIC_READ, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
 
-    if (Exe == INVALID_HANDLE_VALUE ||
-        Cart == INVALID_HANDLE_VALUE ||
-        Sfx == INVALID_HANDLE_VALUE)
+    if (Exe == INVALID_HANDLE_VALUE)
+        return 1;
+    if (Cart == INVALID_HANDLE_VALUE)
+        return 1;
+    if (Sfx == INVALID_HANDLE_VALUE)
         return 1;
 
     BYTE Buffer[4096];
@@ -35,7 +41,5 @@ int main(int argc, char *args)
         FileAppend(Exe, Buffer, BytesRead);
     }
 
-    CloseHandle(Exe);
-    CloseHandle(Cart);
-    CloseHandle(Sfx);
+    return 0;
 }

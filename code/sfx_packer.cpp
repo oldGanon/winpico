@@ -17,11 +17,8 @@ typedef int8_t b8;
 
 typedef size_t mi;
 
-#if GAME_SLOW
-#define Assert(Expression) if (!(Expression)) {*(int *)0 = 0;}
-#else
+// disabled assert
 #define Assert(Expression)
-#endif
 
 #include <windows.h>
 
@@ -175,11 +172,12 @@ LoadSfxFile(wchar_t *Filename)
                 case WAVE_ChunkID_fmt:
                 {
                     WAVE_fmt *fmt = (WAVE_fmt *)GetChunkData(Iter);
-                    Assert(fmt->wFormatTag == 1); // NOTE: Only support PCM
-                    Assert(fmt->nSamplesPerSec == 22050);
-                    Assert(fmt->wBitsPerSample == 16);
-                    Assert(fmt->nBlockAlign == SampleSize);
-                    Assert(fmt->nChannels == 1);
+                    if (fmt->wFormatTag != 1 || // NOTE: Only support PCM
+                       fmt->nSamplesPerSec != 22050 ||
+                       fmt->wBitsPerSample != 16 ||
+                       fmt->nChannels != 1)
+                        return 0;
+
                 } break;
 
                 case WAVE_ChunkID_data:
@@ -210,8 +208,9 @@ LoadSfxFile(wchar_t *Filename)
 
 int main(int argc, char *args)
 {
-	HANDLE SfxFile = CreateFileW(L"sfx.sfx", FILE_APPEND_DATA, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
-    Assert(SfxFile != INVALID_HANDLE_VALUE);
+    HANDLE SfxFile = CreateFileW(L"sfx.sfx", FILE_APPEND_DATA, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    if(SfxFile == INVALID_HANDLE_VALUE)
+        return 1;
 
     SetCurrentDirectoryW(L"sfx");
 
@@ -225,11 +224,13 @@ int main(int argc, char *args)
 
         u32 SampleCount = *(u32 *)Data;
         u32 DataSize = SampleCount * sizeof(i16) + sizeof(u32);
+        
+        DWORD BytesWritten;
         DWORD FilePos = SetFilePointer(SfxFile, 0, 0, FILE_END);
         LockFile(SfxFile, FilePos, 0, DataSize, 0);
-        WriteFile(SfxFile, Data, DataSize, 0, 0);
+        WriteFile(SfxFile, Data, DataSize, &BytesWritten, 0);
         UnlockFile(SfxFile, FilePos, 0, DataSize, 0);
-
+        
         if (!FindNextFileW(FindHandle, &FindData))
             break;
     }
