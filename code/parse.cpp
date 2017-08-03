@@ -50,10 +50,10 @@ Parse_Sfx(char* Data)
     char *Line = Parse_SfxPopLine(&Data);
     while (Line && Sfx < 64)
     {
-        Pico.Sfx[Sfx].EditorMode = Parse_HexByte(Line);
-        Pico.Sfx[Sfx].Speed = Parse_HexByte(Line + 2);
-        Pico.Sfx[Sfx].Start = Parse_HexByte(Line + 4);
-        Pico.Sfx[Sfx].End = Parse_HexByte(Line + 6);
+        PicoCart.Sfx[Sfx].EditorMode = Parse_HexByte(Line);
+        PicoCart.Sfx[Sfx].Speed = Parse_HexByte(Line + 2);
+        PicoCart.Sfx[Sfx].Start = Parse_HexByte(Line + 4);
+        PicoCart.Sfx[Sfx].End = Parse_HexByte(Line + 6);
 
         for (i16 n = 0; n < 32; n++)
         {
@@ -62,7 +62,7 @@ Parse_Sfx(char* Data)
             u8 V = Parse_Hex(*(Line + 8 + (n * 5) + 3));
             u8 E = Parse_Hex(*(Line + 8 + (n * 5) + 4));
             
-            Pico.Sfx[Sfx].Notes[n] = (E << 12) | (V << 9) | (W << 6) | P;
+            PicoCart.Sfx[Sfx].Notes[n] = (E << 12) | (V << 9) | (W << 6) | P;
         }
 
         Line = Parse_SfxPopLine(&Data);

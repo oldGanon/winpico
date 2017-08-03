@@ -44,6 +44,16 @@ struct sound_effect
     u16 Notes[32];
 };
 
+struct pico_cart
+{
+    u8 Gfx[4096];
+    u8 Gfx2[4096];
+    u8 Map[4096];
+    u8 GfxProps[256];
+    u8 Song[256];
+    sound_effect Sfx[64];
+};
+
 struct pico_state
 {
     u8 Gfx[4096];
@@ -52,6 +62,7 @@ struct pico_state
     u8 GfxProps[256];
     u8 Song[256];
     sound_effect Sfx[64];
+
     u8 UserData[6912];
     u8 PersistentCartData[256];
     draw_state Draw;
@@ -61,6 +72,9 @@ struct pico_state
 };
 
 static pico_state Pico = {};
+static lua_State *PicoLua = {};
+static pico_cart PicoCart = {};
+static char *PicoCode;
 
 #define INTtoFIX(i) { (i)<<FIXED_SHIFT }
 
@@ -432,7 +446,7 @@ Pico_ParseStringData(char* Data, u8 *Memory)
 
 
 static void
-Pico_LoadCartFromP8(lua_State *L, char* Cart)
+Pico_LoadP8(char* Cart)
 {
     char *lua = 0;
     char *gfx = 0;
@@ -466,16 +480,12 @@ Pico_LoadCartFromP8(lua_State *L, char* Cart)
     }
 
     // LUA
-    if (luaL_dostring(L, lua))
-    {
-        const char *S = lua_tostring(L, -1);
-        lua_pop(L,1);
-    }
+    PicoCode = lua;
 
     // relying on correctly formated cart, if its not everything explodes
-    Pico_ParseStringData(gfx, Pico.Gfx);
-    Pico_ParseStringData(map, Pico.Map);
-    Pico_ParseStringData(gff, Pico.GfxProps);
+    Pico_ParseStringData(gfx, PicoCart.Gfx);
+    Pico_ParseStringData(map, PicoCart.Map);
+    Pico_ParseStringData(gff, PicoCart.GfxProps);
     Parse_Sfx(sfx);
 }
 
@@ -485,6 +495,8 @@ Pico_ResetState()
     static_assert(sizeof(draw_state) == 64, "draw_state is not 64 bytes!");
     static_assert(sizeof(hardware_state) == 64, "hardware_state is not 64 bytes!");
     static_assert(sizeof(sound_effect) == 68, "sound_effect is not 68 bytes!");
+
+    memcpy(&Pico, &PicoCart, sizeof(pico_cart));
 
     Pico_clip();
     Pico_camera();
@@ -496,7 +508,7 @@ Pico_ResetState()
 }
 
 static void
-Pico_LuaInit(lua_State *L, char *Cart)
+Pico_LuaInit(lua_State *L)
 {
     luaL_openlibs(L);
     
@@ -562,17 +574,8 @@ Pico_LuaInit(lua_State *L, char *Cart)
     // pico
     lua_register(L, "stat",     Pico_stat);
 
-    Pico_LoadCartFromP8(L, Cart);
-}
-
-static void
-Pico_Init(lua_State *L, char *Cart)
-{
-    Pico_ResetState();
-    Pico_LuaInit(L, Cart);
-
-    lua_getglobal(L, "_init");
-    if(lua_pcall(L, 0, 0, 0) != 0)
+    // code
+    if (luaL_dostring(L, PicoCode))
     {
         const char *S = lua_tostring(L, -1);
         lua_pop(L,1);
@@ -580,8 +583,26 @@ Pico_Init(lua_State *L, char *Cart)
 }
 
 static void
-Pico_Update(lua_State *L)
+Pico_Init()
 {
+    lua_State *L = luaL_newstate();
+    Pico_ResetState();
+    Pico_LuaInit(L);
+
+    lua_getglobal(L, "_init");
+    if(lua_pcall(L, 0, 0, 0) != 0)
+    {
+        const char *S = lua_tostring(L, -1);
+        lua_pop(L,1);
+    }
+
+    PicoLua = L;
+}
+
+static void
+Pico_Update()
+{
+    lua_State *L = PicoLua;
     lua_getglobal(L, "_update60");
     if(lua_pcall(L, 0, 0, 0) != 0)
     {
@@ -591,12 +612,20 @@ Pico_Update(lua_State *L)
 }
 
 static void
-Pico_Draw(lua_State *L)
+Pico_Draw()
 {
+    lua_State *L = PicoLua;
     lua_getglobal(L, "_draw");
     if(lua_pcall(L, 0, 0, 0) != 0)
     {
         const char *S = lua_tostring(L, -1);
         lua_pop(L,1);
     }
+}
+
+static void
+Pico_End()
+{
+    lua_close(PicoLua);
+    PicoLua = 0;
 }

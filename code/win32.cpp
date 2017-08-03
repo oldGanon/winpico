@@ -72,6 +72,8 @@ static HWND GlobalWindow;
 static BITMAPINFO GlobalBackbufferInfo;
 static LPDIRECTSOUNDBUFFER GlobalSecondaryBuffer;
 static WINDOWPLACEMENT GlobalWindowPosition = {sizeof(GlobalWindowPosition)};
+static char* Cart;
+static b8 ShouldReset;
 
 static const u64 ExeSize = EXE_SIZE;
 
@@ -124,6 +126,10 @@ Win32_FreeMemory(void *Memory)
     }
 }
 
+//
+// FILES
+//
+
 static void*
 Win32_LoadEntireFile(const char* Filename)
 {
@@ -152,19 +158,49 @@ Win32_LoadEntireFile(const char* Filename)
     return Result;
 }
 
-static lua_State*
-Win32_LoadCart(char *Cart)
+static void
+Win32_Load()
 {
-    lua_State *L = luaL_newstate();
-    Pico_Init(L, Cart);
-    return L;
+    u8 *Data;
+    DWORD DataSize;
+    wchar_t EXEPath[MAX_PATH];
+    GetModuleFileNameW(0, EXEPath, sizeof(EXEPath));
+    HANDLE FileHandle = CreateFileW(EXEPath, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+    if (FileHandle != INVALID_HANDLE_VALUE)
+    {
+        LARGE_INTEGER FileSize;
+        if (GetFileSizeEx(FileHandle, &FileSize))
+        {
+            DataSize = (u32)(FileSize.QuadPart - ExeSize);
+            Data = (u8 *)VirtualAlloc(0, DataSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+            DWORD BytesRead;
+            OVERLAPPED Overlapped = {};
+            Overlapped.Offset     = (u32)((ExeSize >> 0) & 0xFFFFFFFF);
+            Overlapped.OffsetHigh = (u32)((ExeSize >> 32) & 0xFFFFFFFF);
+            if (ReadFile(FileHandle, Data, DataSize, &BytesRead, &Overlapped) && 
+                (DataSize == BytesRead))
+            {
+                Cart = (char *)Data;
+                while (*Data++)
+                    --DataSize;
+                u8 *Sfx = (u8 *)Data;
+
+                Pico_LoadP8(Cart);
+                Audio_LoadSfx(Sfx);
+            }
+            else
+            {
+                Win32_FreeMemory(Data);
+            }
+        }
+    }
+
+    CloseHandle(FileHandle);
 }
 
-static void
-Win32_UnloadCart(lua_State *L)
-{
-    lua_close(L);
-}
+//
+// AUDIO
+//
 
 static void
 Win32_ClearBuffer()
@@ -303,51 +339,9 @@ Win32_AudioUpdate()
     }
 }
 
-static void
-Win32_LoadXInput()    
-{
-    HMODULE XInputLibrary = LoadLibraryA("xinput1_4.dll");
-
-    if(!XInputLibrary)
-        XInputLibrary = LoadLibraryA("xinput1_3.dll");
-    
-    if (XInputLibrary)
-    {
-        XInputGetState = (x_input_get_state *)GetProcAddress(XInputLibrary, "XInputGetState");
-        if (!XInputGetState) {XInputGetState = XInputGetStateStub;}
-
-        XInputSetState = (x_input_set_state *)GetProcAddress(XInputLibrary, "XInputSetState");
-        if (!XInputSetState) {XInputSetState = XInputSetStateStub;}
-    }
-    else
-    {
-        // TODO: Diagnostic
-    }
-}
-
-static r32
-Win32_UpdateStickValue(SHORT Value, SHORT Deadzone)
-{
-    if (Value < -Deadzone)
-        return (r32)((Value + Deadzone) / (32768.f - Deadzone));
-    else if (Value > Deadzone)
-        return (r32)((Value - Deadzone) / (32767.f - Deadzone));
-    return 0.0f;
-}
-
-static void
-Win32_UpdateButton(u8 Player, button_bits Button, b8 IsDown)
-{
-    Pico.Hardware.Controllers[Player] &= ~(1 << Button);
-    Pico.Hardware.Controllers[Player] |= ((!!IsDown) << Button);
-}
-
-static void
-Win32_UpdateKey(u8 Player, button_bits Button, b8 IsDown)
-{
-    Pico.Hardware.Keyboards[Player] &= ~(1 << Button);
-    Pico.Hardware.Keyboards[Player] |= ((!!IsDown) << Button);
-}
+//
+// GRAPHICS
+//
 
 struct win32_window_dimension
 {
@@ -452,6 +446,10 @@ Win32_BlitPicoScreen()
     }
 }
 
+//
+// TIMING
+//
+
 inline u64
 Win32_GetWallClock(void)
 {    
@@ -466,6 +464,57 @@ Win32_GetSecondsElapsed(u64 Start, u64 End)
     r32 Result = ((r32)(End - Start) / (r32)GlobalPerfCountFrequency);
     return Result;
 }
+
+//
+// INPUT
+//
+
+static void
+Win32_LoadXInput()    
+{
+    HMODULE XInputLibrary = LoadLibraryA("xinput1_4.dll");
+
+    if(!XInputLibrary)
+        XInputLibrary = LoadLibraryA("xinput1_3.dll");
+    
+    if (XInputLibrary)
+    {
+        XInputGetState = (x_input_get_state *)GetProcAddress(XInputLibrary, "XInputGetState");
+        if (!XInputGetState) {XInputGetState = XInputGetStateStub;}
+
+        XInputSetState = (x_input_set_state *)GetProcAddress(XInputLibrary, "XInputSetState");
+        if (!XInputSetState) {XInputSetState = XInputSetStateStub;}
+    }
+    else
+    {
+        // TODO: Diagnostic
+    }
+}
+
+static r32
+Win32_UpdateStickValue(SHORT Value, SHORT Deadzone)
+{
+    if (Value < -Deadzone)
+        return (r32)((Value + Deadzone) / (32768.f - Deadzone));
+    else if (Value > Deadzone)
+        return (r32)((Value - Deadzone) / (32767.f - Deadzone));
+    return 0.0f;
+}
+
+static void
+Win32_UpdateButton(u8 Player, button_bits Button, b8 IsDown)
+{
+    Pico.Hardware.Controllers[Player] &= ~(1 << Button);
+    Pico.Hardware.Controllers[Player] |= ((!!IsDown) << Button);
+}
+
+static void
+Win32_UpdateKey(u8 Player, button_bits Button, b8 IsDown)
+{
+    Pico.Hardware.Keyboards[Player] &= ~(1 << Button);
+    Pico.Hardware.Keyboards[Player] |= ((!!IsDown) << Button);
+}
+
 
 static void
 Win32_CollectInput()
@@ -515,6 +564,8 @@ Win32_CollectInput()
                         case 'D': { Win32_UpdateKey(1, BUTTON_BIT_DOWN,  IsDown); } break;
                         case 'S': { Win32_UpdateKey(1, BUTTON_BIT_LEFT,  IsDown); } break;
                         case 'F': { Win32_UpdateKey(1, BUTTON_BIT_RIGHT, IsDown); } break;
+
+                        case 'R': { ShouldReset = IsDown; } break;
                     }
 
                     if (IsDown)
@@ -585,6 +636,10 @@ Win32_CollectInput()
         }
     }
 }
+
+//
+// GAME LOOP
+//
 
 static void
 Win32_Flip(b8 CalledFromLUA = false)
@@ -700,56 +755,15 @@ Win32_WindowCallback(HWND Window,
     return Result;
 }
 
-static b8
-Win32_Load(char **Cart, u8 **Sfx)
-{
-    u8 *Data;
-    DWORD DataSize;
-    wchar_t EXEPath[MAX_PATH];
-    GetModuleFileNameW(0, EXEPath, sizeof(EXEPath));
-    HANDLE FileHandle = CreateFileW(EXEPath, GENERIC_READ, FILE_SHARE_READ, 0, 
-                                    OPEN_EXISTING, 0, 0);
-    if (FileHandle != INVALID_HANDLE_VALUE)
-    {
-        LARGE_INTEGER FileSize;
-        if (GetFileSizeEx(FileHandle, &FileSize))
-        {
-            DataSize = (u32)(FileSize.QuadPart - ExeSize);
-            Data = (u8 *)VirtualAlloc(0, DataSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
-            DWORD BytesRead;
-            OVERLAPPED Overlapped = {};
-            Overlapped.Offset     = (u32)((ExeSize >> 0) & 0xFFFFFFFF);
-            Overlapped.OffsetHigh = (u32)((ExeSize >> 32) & 0xFFFFFFFF);
-            if (ReadFile(FileHandle, Data, DataSize, &BytesRead, &Overlapped) && 
-                (DataSize == BytesRead))
-            {
-                *Cart = (char *)Data;
-                while (*Data++)
-                    --DataSize;
-                *Sfx = (u8 *)Data;
-
-                return true;
-            }
-            else
-            {
-                Win32_FreeMemory(Data);
-            }
-        }
-    }
-    return false;
-}
-
 int CALLBACK
 WinMain(HINSTANCE Instance,
         HINSTANCE PrevInstance,
         LPSTR CommandLine,
         int ShowCode)
 {
-    u8 *Sfx;
-    char *Cart;
-    Win32_Load(&Cart, &Sfx);
-    Audio_LoadSfx(Sfx);
-    lua_State *L = Win32_LoadCart(Cart);
+    Win32_Load();
+    
+    Pico_Init();
  
     Win32_LoadXInput();
 
@@ -826,13 +840,20 @@ WinMain(HINSTANCE Instance,
                 if (GlobalFocus)
                 {
                     // UPDATE
-                    Pico_Update(L);
+                    Pico_Update();
 
                     // RENDER
-                    Pico_Draw(L);
+                    Pico_Draw();
                 }
 
                 Win32_Flip();
+
+                if (ShouldReset)
+                {
+                    ShouldReset = false;
+                    Pico_End();
+                    Pico_Init();
+                }
             }
         }
     }
