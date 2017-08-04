@@ -1,6 +1,6 @@
 #define CART_NAME "lemonhunter"
 
-#define WINPICO_VERSION "L0.1"
+#define WINPICO_VERSION "l0.1"
 
 #include <stdint.h>
 
@@ -552,6 +552,8 @@ Win32_DrawMenu()
         }
     }
 
+    Pico_rectfill(CX, CY + 121, CX + 128, CY + 128, BC);
+    Pico_print("WINPICO VERSION:" WINPICO_VERSION, CX + 1, CY + 122, TC);
 }
 
 //
