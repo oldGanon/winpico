@@ -17,7 +17,7 @@ robocopy "..\misc" "..\build" icon.res /njh /njs
 :skiprc
 
 REM 64-bit build
-cl -DEXE_SIZE=0 %CommonCompilerFlags% ..\code\win32.cpp -Fmwin32.map /I..\include /link -subsystem:windows %CommonLinkerFlags%
+cl -DEXE_SIZE=1 %CommonCompilerFlags% ..\code\win32.cpp -Fmwin32.map /I..\include /link -subsystem:windows %CommonLinkerFlags%
 call :getfilesize win32.exe
 cl -DEXE_SIZE=%filesize% %CommonCompilerFlags% ..\code\win32.cpp -Fmwin32.map /I..\include /link -subsystem:windows %CommonLinkerFlags%
 

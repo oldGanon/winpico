@@ -1002,7 +1002,7 @@ LUA_API int lua_dump (lua_State *L, lua_Writer writer, void *data) {
   api_checknelems(L, 1);
   o = L->top - 1;
   if (isLfunction(o))
-    status = luaU_dump(L, getproto(o), writer, data, 0);
+    status = luaU_dump(L, getproto(o), writer, data, 1);
   else
     status = 1;
   lua_unlock(L);

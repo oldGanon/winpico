@@ -1,108 +1,8 @@
-struct draw_state
-{
-    // 64-bytes
-    u8 PaletteDraw[16];
-    u8 PaletteScreen[16];
-    u8 ClipX0;
-    u8 ClipY0;
-    u8 ClipX1;
-    u8 ClipY1;
-    u8 UNUSED;
-    u8 Color;
-    u8 CursorX;
-    u8 CursorY;
-    i16 CameraX;
-    i16 CameraY;
-    u8 Padding[19];
-};
-
-enum button_bits
-{
-    BUTTON_BIT_LEFT   = 0,
-    BUTTON_BIT_RIGHT  = 1,
-    BUTTON_BIT_UP     = 2,
-    BUTTON_BIT_DOWN   = 3,
-    BUTTON_BIT_CIRCLE = 4,
-    BUTTON_BIT_CROSS  = 5,
-};
-
-struct hardware_state
-{
-    // 64-bytes
-    u8 Keyboards[2];
-    u8 Controllers[2];
-    u8 Padding[60];
-};
-
-struct sound_effect
-{
-    // 68-bytes
-    u8 EditorMode;
-    u8 Speed;
-    u8 Start;
-    u8 End;
-    u16 Notes[32];
-};
-
-struct pico_cart
-{
-    u8 Gfx[4096];
-    u8 Gfx2[4096];
-    u8 Map[4096];
-    u8 GfxProps[256];
-    u8 Song[256];
-    sound_effect Sfx[64];
-};
-
-struct pico_state
-{
-    u8 Gfx[4096];
-    u8 Gfx2[4096];
-    u8 Map[4096];
-    u8 GfxProps[256];
-    u8 Song[256];
-    sound_effect Sfx[64];
-
-    u8 UserData[6912];
-    u8 PersistentCartData[256];
-    draw_state Draw;
-    hardware_state Hardware;
-    u8 GpioPins[128];
-    u8 Screen[8192];
-};
+#include "pico.hpp"
 
 static pico_state Pico = {};
 static lua_State *PicoLua = {};
-static pico_cart PicoCart = {};
-static char *PicoCode;
-
-#define INTtoFIX(i) { (i)<<FIXED_SHIFT }
-
-inline void
-Pico_PackedSet(u8 *Data, u32 Offset, u8 Value)
-{
-    u32 RealOffset = Offset/2;
-    if (Offset & 1)
-    {
-        Data[RealOffset] &= 15 << 4;
-        Data[RealOffset] |= Value;
-    }
-    else
-    {
-        Data[RealOffset] &= 15;
-        Data[RealOffset] |= Value << 4;
-    }
-}
-
-inline u8
-Pico_PackedGet(u8 *Data, u32 Offset)
-{
-    u32 RealOffset = Offset/2;
-    if (Offset & 1)
-        return Data[RealOffset] & 15;
-    else
-        return Data[RealOffset] >> 4;
-}
+static pico_cart *PicoCart = {};
 
 #include "math.cpp"
 #include "graphics.cpp"
@@ -427,76 +327,13 @@ Pico_stat(lua_State *L)
 #include "parse.cpp"
 
 static void
-Pico_ParseStringData(char* Data, u8 *Memory)
-{
-    i32 X = 0;
-    char *P = Data - 1;;
-    while (*(++P))
-    {
-        u8 Value = 0;
-        if ('0' <= *P && *P <= '9') 
-            Value = *P - '0';
-        else if ('a' <= *P && *P <= 'f')
-            Value = *P - 'a' + 10;
-        else continue;
-
-        Pico_PackedSet(Memory, X++, Value);
-    }
-}
-
-
-static void
-Pico_LoadP8(char* Cart)
-{
-    char *lua = 0;
-    char *gfx = 0;
-    char *gff = 0;
-    char *map = 0;
-    char *sfx = 0;
-    char *label = 0;
-    char *music = 0;
-
-    char* P = Cart;
-    while (*P)
-    {
-        if (P[0] == '_' && P[1] == '_' && P[5] == '_' && P[6] == '_')
-        {
-            *(P) = 0;
-            if (P[2] == 'l' && P[3] == 'u' && P[4] == 'a') lua = &P[7] + 1;
-            if (P[2] == 'g' && P[3] == 'f' && P[4] == 'x') gfx = &P[7] + 1;
-            if (P[2] == 'g' && P[3] == 'f' && P[4] == 'f') gff = &P[7] + 1;
-            if (P[2] == 'm' && P[3] == 'a' && P[4] == 'p') map = &P[7] + 1;
-            if (P[2] == 's' && P[3] == 'f' && P[4] == 'x') sfx = &P[7] + 1;
-        }
-
-        if (P[0] == '_' && P[1] == '_' && P[7] == '_' && P[8] == '_')
-        {
-            *(P) = 0;
-            if (P[2] == 'l' && P[3] == 'a' && P[4] == 'b' && P[5] == 'e' && P[6] == 'l') label = &P[7] + 1;
-            if (P[2] == 'm' && P[3] == 'u' && P[4] == 's' && P[5] == 'i' && P[6] == 'c') music = &P[7] + 1;
-        }
-
-        ++P;
-    }
-
-    // LUA
-    PicoCode = lua;
-
-    // relying on correctly formated cart, if its not everything explodes
-    Pico_ParseStringData(gfx, PicoCart.Gfx);
-    Pico_ParseStringData(map, PicoCart.Map);
-    Pico_ParseStringData(gff, PicoCart.GfxProps);
-    Parse_Sfx(sfx);
-}
-
-static void
 Pico_ResetState()
 {
     static_assert(sizeof(draw_state) == 64, "draw_state is not 64 bytes!");
     static_assert(sizeof(hardware_state) == 64, "hardware_state is not 64 bytes!");
     static_assert(sizeof(sound_effect) == 68, "sound_effect is not 68 bytes!");
 
-    memcpy(&Pico, &PicoCart, sizeof(pico_cart));
+    memcpy(&Pico, PicoCart, sizeof(pico_cart_data));
 
     Pico_clip();
     Pico_camera();
@@ -575,11 +412,23 @@ Pico_LuaInit(lua_State *L)
     lua_register(L, "stat",     Pico_stat);
 
     // code
-    if (luaL_dostring(L, PicoCode))
+    if (luaL_loadbufferx(L, (char *)PicoCart->Code, PicoCart->CodeSize, CART_NAME, "b") != LUA_OK)
     {
-        const char *S = lua_tostring(L, -1);
-        lua_pop(L,1);
+        // error
+        const char *ErrStr = lua_tostring(L, -1);
+        lua_pop(L, 1);
+        return;
     }
+
+    // execute code
+    if (lua_pcall(L, 0, 0, 0))
+    {
+        // error
+        const char *ErrStr = lua_tostring(L, -1);
+        lua_pop(L, 1);
+        return;
+    }
+
 }
 
 static void

@@ -9,6 +9,6 @@ IF NOT EXIST build mkdir build
 pushd build
 
 REM 64-bit build
-cl %CommonCompilerFlags% ..\code\exe_packer.cpp /link -subsystem:console
+cl %CommonCompilerFlags% ..\code\exe_packer.cpp /I..\include /link -subsystem:console /LIBPATH:"..\lib" picolua.lib
 
 popd

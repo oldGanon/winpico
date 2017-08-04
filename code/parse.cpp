@@ -44,16 +44,16 @@ Parse_SfxPopLine(char** Data)
 }
 
 static void
-Parse_Sfx(char* Data)
+Parse_Sfx(char* Data, sound_effect *SfxMem)
 {
     i16 Sfx = 0;
     char *Line = Parse_SfxPopLine(&Data);
     while (Line && Sfx < 64)
     {
-        PicoCart.Sfx[Sfx].EditorMode = Parse_HexByte(Line);
-        PicoCart.Sfx[Sfx].Speed = Parse_HexByte(Line + 2);
-        PicoCart.Sfx[Sfx].Start = Parse_HexByte(Line + 4);
-        PicoCart.Sfx[Sfx].End = Parse_HexByte(Line + 6);
+        SfxMem[Sfx].EditorMode = Parse_HexByte(Line);
+        SfxMem[Sfx].Speed = Parse_HexByte(Line + 2);
+        SfxMem[Sfx].Start = Parse_HexByte(Line + 4);
+        SfxMem[Sfx].End = Parse_HexByte(Line + 6);
 
         for (i16 n = 0; n < 32; n++)
         {
@@ -62,10 +62,103 @@ Parse_Sfx(char* Data)
             u8 V = Parse_Hex(*(Line + 8 + (n * 5) + 3));
             u8 E = Parse_Hex(*(Line + 8 + (n * 5) + 4));
             
-            PicoCart.Sfx[Sfx].Notes[n] = (E << 12) | (V << 9) | (W << 6) | P;
+            SfxMem[Sfx].Notes[n] = (E << 12) | (V << 9) | (W << 6) | P;
         }
 
         Line = Parse_SfxPopLine(&Data);
         ++Sfx;
     }
+}
+
+static void
+Parse_StringData(char* Data, u8 *Memory)
+{
+    i32 X = 0;
+    char *P = Data - 1;;
+    while (*(++P))
+    {
+        u8 Value = 0;
+        if ('0' <= *P && *P <= '9') 
+            Value = *P - '0';
+        else if ('a' <= *P && *P <= 'f')
+            Value = *P - 'a' + 10;
+        else continue;
+
+        Pico_PackedSet(Memory, X++, Value);
+    }
+}
+
+static int
+Parse_Writer(lua_State *L, const void* Src, size_t Size, void* Data)
+{
+    pico_cart **Cart = (pico_cart **)Data;
+    *Cart = (pico_cart *)realloc(*Cart, Pico_CartSize(*Cart) + Size);
+    memcpy((*Cart)->Code + (*Cart)->CodeSize, Src, Size);
+    (*Cart)->CodeSize += Size;
+    return 0;
+}
+
+static pico_cart*
+Parse_P8(char* P8)
+{
+    char *lua = 0;
+    char *gfx = 0;
+    char *gff = 0;
+    char *map = 0;
+    char *sfx = 0;
+    char *label = 0;
+    char *music = 0;
+
+    char* P = P8;
+    while (*P)
+    {
+        if (P[0] == '_' && P[1] == '_' && P[5] == '_' && P[6] == '_')
+        {
+            *(P) = 0;
+            if (P[2] == 'l' && P[3] == 'u' && P[4] == 'a') lua = &P[7] + 1;
+            if (P[2] == 'g' && P[3] == 'f' && P[4] == 'x') gfx = &P[7] + 1;
+            if (P[2] == 'g' && P[3] == 'f' && P[4] == 'f') gff = &P[7] + 1;
+            if (P[2] == 'm' && P[3] == 'a' && P[4] == 'p') map = &P[7] + 1;
+            if (P[2] == 's' && P[3] == 'f' && P[4] == 'x') sfx = &P[7] + 1;
+        }
+
+        if (P[0] == '_' && P[1] == '_' && P[7] == '_' && P[8] == '_')
+        {
+            *(P) = 0;
+            if (P[2] == 'l' && P[3] == 'a' && P[4] == 'b' && P[5] == 'e' && P[6] == 'l') label = &P[7] + 1;
+            if (P[2] == 'm' && P[3] == 'u' && P[4] == 's' && P[5] == 'i' && P[6] == 'c') music = &P[7] + 1;
+        }
+
+        ++P;
+    }
+
+    pico_cart *Cart = (pico_cart *)malloc(sizeof(pico_cart) - 1);
+    memset(Cart, 0x00, sizeof(pico_cart));
+
+    // LUA
+    lua_State *L = luaL_newstate();
+    if (luaL_loadstring(L, lua))
+    {
+        const char *ErrStr = lua_tostring(L, -1);
+        free(Cart);
+        return 0;
+    }
+    else
+    {
+        if (lua_dump(L, Parse_Writer, &Cart))
+        {
+            free(Cart);
+            return 0;
+        }
+    }
+    lua_pop(L, 1);
+    lua_close(L);
+
+    // relying on correctly formated cart, if its not everything explodes
+    Parse_StringData(gfx, Cart->Data.Gfx);
+    Parse_StringData(map, Cart->Data.Map);
+    Parse_StringData(gff, Cart->Data.GfxProps);
+    Parse_Sfx(sfx, Cart->Data.Sfx);
+
+    return Cart;
 }

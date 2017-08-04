@@ -1,3 +1,7 @@
+#define CART_NAME "lemonhunter"
+
+#define WINPICO_VERSION "L0.1"
+
 #include <stdint.h>
 
 typedef int8_t i8;
@@ -50,6 +54,7 @@ struct win32_sound_output
 #define SCREEN_BYTES_PER_PIXEL 4
 #define SCREEN_PITCH (Align16(SCREEN_WIDTH * SCREEN_BYTES_PER_PIXEL))
 
+
 struct bitmap
 {
     i16 Width;
@@ -72,7 +77,6 @@ static HWND GlobalWindow;
 static BITMAPINFO GlobalBackbufferInfo;
 static LPDIRECTSOUNDBUFFER GlobalSecondaryBuffer;
 static WINDOWPLACEMENT GlobalWindowPosition = {sizeof(GlobalWindowPosition)};
-static char* Cart;
 static b8 ShouldReset;
 
 static const u64 ExeSize = EXE_SIZE;
@@ -117,6 +121,12 @@ Memory_Copy(void *Dest, void *Source, mi Num)
     return Dest;
 }
 
+static void*
+Win32_AllocMemory(u64 Size)
+{
+    return VirtualAlloc(0, Size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+}
+
 static void
 Win32_FreeMemory(void *Memory)
 {
@@ -142,7 +152,7 @@ Win32_LoadEntireFile(const char* Filename)
     if(GetFileSizeEx(FileHandle, &FileSize))
     {
         u32 FileSize32 = (u32)FileSize.QuadPart;
-        Result = VirtualAlloc(0, FileSize32+1, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+        Result = Win32_AllocMemory(FileSize32+1);
         if(Result)
         {
             DWORD BytesRead;
@@ -172,7 +182,7 @@ Win32_Load()
         if (GetFileSizeEx(FileHandle, &FileSize))
         {
             DataSize = (u32)(FileSize.QuadPart - ExeSize);
-            Data = (u8 *)VirtualAlloc(0, DataSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+            Data = (u8 *)Win32_AllocMemory(DataSize);
             DWORD BytesRead;
             OVERLAPPED Overlapped = {};
             Overlapped.Offset     = (u32)((ExeSize >> 0) & 0xFFFFFFFF);
@@ -180,13 +190,18 @@ Win32_Load()
             if (ReadFile(FileHandle, Data, DataSize, &BytesRead, &Overlapped) && 
                 (DataSize == BytesRead))
             {
-                Cart = (char *)Data;
+#if 1
+                PicoCart = (pico_cart *)Data;
+                Audio_LoadSfx(Data + Pico_CartSize(PicoCart));
+#else
+                char *P8 = (char *)Data;
                 while (*Data++)
                     --DataSize;
                 u8 *Sfx = (u8 *)Data;
 
-                Pico_LoadP8(Cart);
+                PicoCart = Parse_P8(P8);
                 Audio_LoadSfx(Sfx);
+#endif
             }
             else
             {
@@ -798,7 +813,7 @@ WinMain(HINSTANCE Instance,
             CreateWindowExA(
                 0,
                 WindowClass.lpszClassName,
-                "lemonhunter",
+                CART_NAME,
                 WS_OVERLAPPEDWINDOW|WS_VISIBLE,
                 CW_USEDEFAULT, CW_USEDEFAULT,
                 WindowDimension.right - WindowDimension.left,
