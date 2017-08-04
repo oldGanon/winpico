@@ -377,6 +377,42 @@ Win32_GetWindowDimension(HWND Window)
     return Result;
 }
 
+static b8
+Win32_IsFullscreen(HWND Window)
+{
+    DWORD Style = GetWindowLong(Window, GWL_STYLE);
+    return !(Style & WS_OVERLAPPEDWINDOW);
+}
+
+static void
+Win32_SetFullscreen(HWND Window, b8 Fullscreen)
+{
+    if (Fullscreen)
+    {
+        MONITORINFO MonitorInfo = {sizeof(MonitorInfo)};
+        if (GetWindowPlacement(Window, &GlobalWindowPosition) && 
+            GetMonitorInfo(MonitorFromWindow(Window, MONITOR_DEFAULTTOPRIMARY), &MonitorInfo))
+        {
+            DWORD Style = GetWindowLong(Window, GWL_STYLE);
+            SetWindowLong(Window, GWL_STYLE, Style & ~WS_OVERLAPPEDWINDOW);
+            SetWindowPos(Window, HWND_TOP,
+                         MonitorInfo.rcMonitor.left, MonitorInfo.rcMonitor.top,
+                         MonitorInfo.rcMonitor.right - MonitorInfo.rcMonitor.left,
+                         MonitorInfo.rcMonitor.bottom - MonitorInfo.rcMonitor.top,
+                         SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+        }
+    }
+    else
+    {
+        DWORD Style = GetWindowLong(Window, GWL_STYLE);
+        SetWindowLong(Window, GWL_STYLE, Style | WS_OVERLAPPEDWINDOW);
+        SetWindowPlacement(Window, &GlobalWindowPosition);
+        SetWindowPos(Window, 0, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                     SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    }
+}
+
 static void
 Win32_ToggleFullscreen(HWND Window)
 {
@@ -581,6 +617,13 @@ Win32_CollectInput()
                         case 'F': { Win32_UpdateKey(1, BUTTON_BIT_RIGHT, IsDown); } break;
 
                         case 'R': { ShouldReset = IsDown; } break;
+                        case VK_ESCAPE: 
+                        {
+                            if (Win32_IsFullscreen(GlobalWindow))
+                                Win32_SetFullscreen(GlobalWindow, false);
+                            else
+                                GlobalRunning = !IsDown;
+                        } break;
                     }
 
                     if (IsDown)
