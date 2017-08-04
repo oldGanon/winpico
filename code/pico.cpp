@@ -364,7 +364,6 @@ Pico_LuaInit(lua_State *L)
     lua_register(L, "color",    Pico_color);
     lua_register(L, "cursor",   Pico_cursor);
     lua_register(L, "fget",     Pico_fget);
-    lua_register(L, "flip",     Pico_flip);
     lua_register(L, "fset",     Pico_fset);
     lua_register(L, "line",     Pico_line);
     lua_register(L, "pal",      Pico_pal);

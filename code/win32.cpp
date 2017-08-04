@@ -77,7 +77,9 @@ static HWND GlobalWindow;
 static BITMAPINFO GlobalBackbufferInfo;
 static LPDIRECTSOUNDBUFFER GlobalSecondaryBuffer;
 static WINDOWPLACEMENT GlobalWindowPosition = {sizeof(GlobalWindowPosition)};
-static b8 ShouldReset;
+static b8 GlobalShouldReset = 0;
+static b8 GlobalInMenu = 0;
+static i32 GlobalMenuSelection = 0;
 
 static const u64 ExeSize = EXE_SIZE;
 
@@ -497,6 +499,51 @@ Win32_BlitPicoScreen()
     }
 }
 
+static void
+Win32_DrawMenu()
+{
+    const char Title[] = "paused";
+    i16 TW = (i16)(sizeof(Title) - 1) * 2;
+
+    u8 BC = 0;
+    u8 TC = 7;
+
+    i16 CX = Pico.Draw.CameraX;
+    i16 CY = Pico.Draw.CameraY;
+
+    i16 R = 112;
+    i16 L = 16;
+    i16 M = (L + R) / 2;
+    i16 T = 44;
+    i16 B = 84;
+    i16 Bo = 3;
+    Pico_rectfill(CX + L, CY + T, CX + R, CY + B, BC);
+    Pico_line(CX + L + Bo, CY + T + Bo, CX + L + Bo, CY + B - Bo, TC);
+    Pico_line(CX + R - Bo, CY + T + Bo, CX + R - Bo, CY + B - Bo, TC);
+    Pico_line(CX + R - Bo, CY + B - Bo, CX + L + Bo, CY + B - Bo, TC);
+    Pico_line(CX + L + Bo, CY + T + Bo, CX + M - TW - 1, CY + T + Bo, TC);
+    Pico_line(CX + M + TW + 1, CY + T + Bo, CX + R - Bo, CY + T + Bo, TC);
+    Pico_print(Title, CX + M - TW + 1, CY + T + 1, TC);
+
+    const char *Options[3] = { "cONTINUE", "rESET", "eXIT" };
+    const i16 OW[3] = { (i16)(sizeof("cONTINUE") - 1) * 2, (i16)(sizeof("rESET") - 1) * 2, (i16)(sizeof("eXIT") - 1) * 2 };
+
+    for (i16 i = 0; i < 3; ++i)
+    {
+        i16 Y = 10 + i * 8;
+        if (GlobalMenuSelection == i)
+        {
+            Pico_rectfill(CX + M - OW[0] - 1, CY + T + Y - 1, CX + M + OW[0] + 1, CY + T + Y + 5, TC);
+            Pico_print(Options[i], CX + M - OW[i] + 1, CY + T + Y, BC);
+        }
+        else
+        {
+            Pico_print(Options[i], CX + M - OW[i] + 1, CY + T + Y, TC);
+        }
+    }
+
+}
+
 //
 // TIMING
 //
@@ -566,6 +613,62 @@ Win32_UpdateKey(u8 Player, button_bits Button, b8 IsDown)
     Pico.Hardware.Keyboards[Player] |= ((!!IsDown) << Button);
 }
 
+static void
+Win32_PicoInput(u32 VKCode, b8 IsDown)
+{
+    switch (VKCode)
+    {
+        case 'W':
+        case 'Y':
+        case 'C':
+        case 'N':
+        case 'Z': { Win32_UpdateKey(0, BUTTON_BIT_CIRCLE, IsDown); } break;
+        case 'X':
+        case 'V':
+        case 'M': { Win32_UpdateKey(0, BUTTON_BIT_CROSS,  IsDown); } break;
+
+        case VK_UP:    { Win32_UpdateKey(0, BUTTON_BIT_UP,    IsDown); } break;
+        case VK_DOWN:  { Win32_UpdateKey(0, BUTTON_BIT_DOWN,  IsDown); } break;
+        case VK_LEFT:  { Win32_UpdateKey(0, BUTTON_BIT_LEFT,  IsDown); } break;
+        case VK_RIGHT: { Win32_UpdateKey(0, BUTTON_BIT_RIGHT, IsDown); } break;
+
+        case 'A': 
+        case 'Q': { Win32_UpdateKey(1, BUTTON_BIT_CROSS,  IsDown); } break;
+        case VK_SHIFT:
+        case VK_TAB: { Win32_UpdateKey(1, BUTTON_BIT_CIRCLE, IsDown); } break;
+
+        case 'E': { Win32_UpdateKey(1, BUTTON_BIT_UP,    IsDown); } break;
+        case 'D': { Win32_UpdateKey(1, BUTTON_BIT_DOWN,  IsDown); } break;
+        case 'S': { Win32_UpdateKey(1, BUTTON_BIT_LEFT,  IsDown); } break;
+        case 'F': { Win32_UpdateKey(1, BUTTON_BIT_RIGHT, IsDown); } break;
+
+        case 'R': { GlobalShouldReset = IsDown; } break;
+    }
+}
+
+static void
+Win32_MenuInput(u32 VKCode)
+{
+    switch (VKCode)
+    {
+        case VK_UP:    { GlobalMenuSelection = MAX(GlobalMenuSelection - 1, 0); } break;
+        case VK_DOWN:  { GlobalMenuSelection = MIN(GlobalMenuSelection + 1, 2); } break;
+        case 'W':
+        case 'Y':
+        case 'C':
+        case 'N':
+        case 'Z':
+        case VK_RETURN:
+        {
+            switch (GlobalMenuSelection)
+            {
+                case 2: { GlobalRunning = false; }
+                case 1: { GlobalShouldReset = true; }
+                case 0: { GlobalMenuSelection = 0; GlobalInMenu = false; } break;
+            }
+        } break;
+    }
+}
 
 static void
 Win32_CollectInput()
@@ -575,71 +678,49 @@ Win32_CollectInput()
     {
         switch (Message.message)
         {
-            case WM_QUIT:
-            {
-                GlobalRunning = false;
-            } break;
-            
             case WM_SYSKEYDOWN:
             case WM_SYSKEYUP:
             case WM_KEYDOWN:
             case WM_KEYUP:
             {
                 u32 VKCode = (u32)Message.wParam;
-                
                 b8 WasDown = ((Message.lParam & (1 << 30)) != 0);
                 b8 IsDown = ((Message.lParam & (1 << 31)) == 0);
-                if (WasDown != IsDown)
+                if (IsDown)
                 {
-                    switch (VKCode)
+                    b8 AltKeyDown = (Message.lParam & (1 << 29)) != 0;
+                    if ((VKCode == VK_F4) && AltKeyDown)
                     {
-                        case 'Y': { Win32_UpdateKey(0, BUTTON_BIT_CIRCLE, IsDown); } break;
-                        case 'Z': { Win32_UpdateKey(0, BUTTON_BIT_CIRCLE, IsDown); } break;
-                        case 'X': { Win32_UpdateKey(0, BUTTON_BIT_CROSS,  IsDown); } break;
-                        case 'C': { Win32_UpdateKey(0, BUTTON_BIT_CIRCLE, IsDown); } break;
-                        case 'V': { Win32_UpdateKey(0, BUTTON_BIT_CROSS,  IsDown); } break;
-                        case 'N': { Win32_UpdateKey(0, BUTTON_BIT_CIRCLE, IsDown); } break;
-                        case 'M': { Win32_UpdateKey(0, BUTTON_BIT_CROSS,  IsDown); } break;
-
-                        case VK_UP:    { Win32_UpdateKey(0, BUTTON_BIT_UP,    IsDown); } break;
-                        case VK_DOWN:  { Win32_UpdateKey(0, BUTTON_BIT_DOWN,  IsDown); } break;
-                        case VK_LEFT:  { Win32_UpdateKey(0, BUTTON_BIT_LEFT,  IsDown); } break;
-                        case VK_RIGHT: { Win32_UpdateKey(0, BUTTON_BIT_RIGHT, IsDown); } break;
-
-                        case VK_SHIFT: { Win32_UpdateKey(1, BUTTON_BIT_CIRCLE, IsDown); } break;
-                        case 'A':      { Win32_UpdateKey(1, BUTTON_BIT_CROSS,  IsDown); } break;
-                        case VK_TAB:   { Win32_UpdateKey(1, BUTTON_BIT_CIRCLE, IsDown); } break;
-                        case 'Q':      { Win32_UpdateKey(1, BUTTON_BIT_CROSS,  IsDown); } break;
-
-                        case 'E': { Win32_UpdateKey(1, BUTTON_BIT_UP,    IsDown); } break;
-                        case 'D': { Win32_UpdateKey(1, BUTTON_BIT_DOWN,  IsDown); } break;
-                        case 'S': { Win32_UpdateKey(1, BUTTON_BIT_LEFT,  IsDown); } break;
-                        case 'F': { Win32_UpdateKey(1, BUTTON_BIT_RIGHT, IsDown); } break;
-
-                        case 'R': { ShouldReset = IsDown; } break;
-                        case VK_ESCAPE: 
-                        {
-                            if (Win32_IsFullscreen(GlobalWindow))
-                                Win32_SetFullscreen(GlobalWindow, false);
-                            else
-                                GlobalRunning = !IsDown;
-                        } break;
+                        GlobalRunning = false;
                     }
-
-                    if (IsDown)
+                    if ((VKCode == VK_RETURN) && AltKeyDown)
                     {
-                        b8 AltKeyWasDown = (Message.lParam & (1 << 29)) != 0;
-                        if ((VKCode == VK_F4) && AltKeyWasDown)
-                        {
-                            GlobalRunning = false;;
-                        }
-                        if ((VKCode == VK_RETURN) && AltKeyWasDown)
-                        {
-                            if (Message.hwnd)
-                                Win32_ToggleFullscreen(Message.hwnd);
-                        }
+                        if (Message.hwnd)
+                            Win32_ToggleFullscreen(Message.hwnd);
+                    }
+                    if (VKCode == VK_ESCAPE)
+                    {
+                        GlobalInMenu = !GlobalInMenu;
+                        // if (Win32_IsFullscreen(GlobalWindow))
+                        //     Win32_SetFullscreen(GlobalWindow, false);
+                        // else
+                        //     GlobalRunning = !IsDown;
                     }
                 }
+                
+                if (WasDown != IsDown)
+                {
+                    if (!GlobalInMenu)
+                        Win32_PicoInput(VKCode, IsDown);
+                    else if (IsDown)
+                        Win32_MenuInput(VKCode);
+                }
+             
+            } break;
+
+            case WM_QUIT:
+            {
+                GlobalRunning = false;
             } break;
 
             default:
@@ -696,21 +777,12 @@ Win32_CollectInput()
 }
 
 //
-// GAME LOOP
+// LOOP
 //
 
 static void
-Win32_Flip(b8 CalledFromLUA = false)
+Win32_WaitFrame()
 {
-    if (GlobalFocus)
-    {
-        Win32_BlitPicoScreen();
-        HDC DeviceContext = GetDC(GlobalWindow);
-        Win32_DisplayBufferInWindow(DeviceContext, GlobalWindow);
-        ReleaseDC(GlobalWindow, DeviceContext);
-        Win32_AudioUpdate();
-    }
-
     u64 WorkCounter = Win32_GetWallClock();
     r32 WorkSecondsElapsed = Win32_GetSecondsElapsed(GlobalLastCounter, WorkCounter);
 
@@ -737,11 +809,6 @@ Win32_Flip(b8 CalledFromLUA = false)
     u64 EndCounter = Win32_GetWallClock();
     r32 MSPerFrame = 1000.0f * Win32_GetSecondsElapsed(GlobalLastCounter, EndCounter);
     GlobalLastCounter = EndCounter;
-
-    Win32_CollectInput();
-
-    if (CalledFromLUA && !GlobalRunning)
-        exit(0);
 }
 
 static LRESULT CALLBACK
@@ -895,23 +962,35 @@ WinMain(HINSTANCE Instance,
 
             while (GlobalRunning)
             {
-                if (GlobalFocus)
+                Win32_CollectInput();
+
+                if (GlobalShouldReset)
                 {
-                    // UPDATE
-                    Pico_Update();
-
-                    // RENDER
-                    Pico_Draw();
-                }
-
-                Win32_Flip();
-
-                if (ShouldReset)
-                {
-                    ShouldReset = false;
+                    GlobalShouldReset = false;
                     Pico_End();
                     Pico_Init();
                 }
+
+                if (GlobalFocus)
+                {
+                    if (GlobalInMenu)
+                    {
+                        Win32_DrawMenu();
+                    }
+                    else
+                    {
+                        Pico_Update();
+                        Pico_Draw();
+                    }
+
+                    Win32_BlitPicoScreen();
+                    HDC DeviceContext = GetDC(GlobalWindow);
+                    Win32_DisplayBufferInWindow(DeviceContext, GlobalWindow);
+                    ReleaseDC(GlobalWindow, DeviceContext);
+                    Win32_AudioUpdate();
+                }
+
+                Win32_WaitFrame();
             }
         }
     }

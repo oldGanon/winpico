@@ -859,10 +859,3 @@ Pico_print(lua_State *L)
 
     return 0;
 }
-
-static int
-Pico_flip(lua_State *L)
-{
-    Win32_Flip(true);
-    return 0;
-}
