@@ -24,6 +24,7 @@ enum button_bits
     BUTTON_BIT_DOWN   = 3,
     BUTTON_BIT_CIRCLE = 4,
     BUTTON_BIT_CROSS  = 5,
+    BUTTON_BIT_START  = 6,
 };
 
 struct hardware_state

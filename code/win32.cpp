@@ -514,8 +514,8 @@ Win32_DrawMenu()
     i16 R = 112;
     i16 L = 16;
     i16 M = (L + R) / 2;
-    i16 T = 44;
-    i16 B = 84;
+    i16 T = 40;
+    i16 B = 86;
     i16 Bo = 3;
     Pico_rectfill(CX + L, CY + T, CX + R, CY + B, BC);
     Pico_line(CX + L + Bo, CY + T + Bo, CX + L + Bo, CY + B - Bo, TC);
@@ -525,15 +525,25 @@ Win32_DrawMenu()
     Pico_line(CX + M + TW + 1, CY + T + Bo, CX + R - Bo, CY + T + Bo, TC);
     Pico_print(Title, CX + M - TW + 1, CY + T + 1, TC);
 
-    const char *Options[3] = { "cONTINUE", "rESET", "eXIT" };
-    const i16 OW[3] = { (i16)(sizeof("cONTINUE") - 1) * 2, (i16)(sizeof("rESET") - 1) * 2, (i16)(sizeof("eXIT") - 1) * 2 };
+    b8 Fullscreen = Win32_IsFullscreen(GlobalWindow);
 
-    for (i16 i = 0; i < 3; ++i)
+    char *Options[4];
+    Options[0] = "cONTINUE";
+    Options[1] = Fullscreen ? "wINDOW" : "fULLSCREEN";
+    Options[2] = "rESET";
+    Options[3] = "eXIT";
+    i16 OW[4];
+    OW[0] = (i16)(sizeof("cONTINUE") - 1) * 2;
+    OW[1] = Fullscreen ? (i16)(sizeof("wINDOW") - 1) * 2 : (i16)(sizeof("fULLSCREEN") - 1) * 2;
+    OW[2] = (i16)(sizeof("rESET") - 1) * 2;
+    OW[3] = (i16)(sizeof("eXIT") - 1) * 2;
+
+    for (i16 i = 0; i < 4; ++i)
     {
         i16 Y = 10 + i * 8;
         if (GlobalMenuSelection == i)
         {
-            Pico_rectfill(CX + M - OW[0] - 1, CY + T + Y - 1, CX + M + OW[0] + 1, CY + T + Y + 5, TC);
+            Pico_rectfill(CX + M - 20 - 1, CY + T + Y - 1, CX + M + 20 + 1, CY + T + Y + 5, TC);
             Pico_print(Options[i], CX + M - OW[i] + 1, CY + T + Y, BC);
         }
         else
@@ -589,6 +599,37 @@ Win32_LoadXInput()
     }
 }
 
+static void
+Win32_MenuUp()
+{
+    GlobalMenuSelection = MAX(GlobalMenuSelection - 1, 0);
+}
+
+static void
+Win32_MenuDown()
+{
+    GlobalMenuSelection = MIN(GlobalMenuSelection + 1, 3);
+}
+
+static void
+Win32_MenuClose()
+{
+    GlobalMenuSelection = 0;
+    GlobalInMenu = false;
+}
+
+static void
+Win32_MenuSelect()
+{
+    switch (GlobalMenuSelection)
+    {
+        case 1: { Win32_ToggleFullscreen(GlobalWindow); } break;
+        case 3: { GlobalRunning = false; } break;
+        case 2: { GlobalShouldReset = true; }
+        case 0: { GlobalMenuSelection = 0; GlobalInMenu = false; } break;
+    }
+}
+
 static r32
 Win32_UpdateStickValue(SHORT Value, SHORT Deadzone)
 {
@@ -614,7 +655,94 @@ Win32_UpdateKey(u8 Player, button_bits Button, b8 IsDown)
 }
 
 static void
-Win32_PicoInput(u32 VKCode, b8 IsDown)
+Win32_PicoPad(XINPUT_GAMEPAD *Pad, u8 Player)
+{
+    r32 StickPositionX = Win32_UpdateStickValue(Pad->sThumbLX, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+    r32 StickPositionY = Win32_UpdateStickValue(Pad->sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+    
+    b8 Analog = false;
+    if ((StickPositionX != 0.0f) || (StickPositionY != 0.0f))
+        Analog = true;
+
+    r32 Threshold = 0.2f;
+    if (Analog)
+    {
+        if (StickPositionY > Threshold) Win32_UpdateButton(Player, BUTTON_BIT_UP,    1);
+        if (StickPositionY <-Threshold) Win32_UpdateButton(Player, BUTTON_BIT_DOWN,  1);
+        if (StickPositionX <-Threshold) Win32_UpdateButton(Player, BUTTON_BIT_LEFT,  1);
+        if (StickPositionX > Threshold) Win32_UpdateButton(Player, BUTTON_BIT_RIGHT, 1);
+    }
+    else
+    {
+        if ((Pad->wButtons & XINPUT_GAMEPAD_DPAD_UP)    != 0) Win32_UpdateButton(Player, BUTTON_BIT_UP,    1);
+        if ((Pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)  != 0) Win32_UpdateButton(Player, BUTTON_BIT_DOWN,  1);
+        if ((Pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)  != 0) Win32_UpdateButton(Player, BUTTON_BIT_LEFT,  1);
+        if ((Pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) != 0) Win32_UpdateButton(Player, BUTTON_BIT_RIGHT, 1);
+    }
+
+    if ((Pad->wButtons & XINPUT_GAMEPAD_Y) != 0)              Win32_UpdateButton(Player, BUTTON_BIT_CIRCLE, 1);
+    if ((Pad->wButtons & XINPUT_GAMEPAD_A) != 0)              Win32_UpdateButton(Player, BUTTON_BIT_CIRCLE, 1);
+    if ((Pad->wButtons & XINPUT_GAMEPAD_X) != 0)              Win32_UpdateButton(Player, BUTTON_BIT_CROSS, 1);
+    if ((Pad->wButtons & XINPUT_GAMEPAD_B) != 0)              Win32_UpdateButton(Player, BUTTON_BIT_CROSS, 1);
+    if ((Pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0)  Win32_UpdateButton(Player, BUTTON_BIT_CIRCLE, 1);
+    if ((Pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0) Win32_UpdateButton(Player, BUTTON_BIT_CROSS, 1);
+
+    if ((Pad->wButtons & XINPUT_GAMEPAD_START) != 0) Win32_UpdateButton(Player, BUTTON_BIT_START, 1);
+    //Win32_UpdateButton(BUTTON_BIT_CIRCLE, (Pad->wButtons & XINPUT_GAMEPAD_BACK) != 0);
+}
+
+static void
+Win32_MenuPad(XINPUT_GAMEPAD *Pad, u8 Player)
+{
+    r32 StickPositionY = Win32_UpdateStickValue(Pad->sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+
+    b8 Analog = false;
+    if (StickPositionY != 0.0f)
+        Analog = true;
+
+    b8 UpIsDown;
+    b8 DownIsDown;
+    b8 UpWasDown = (Pico.Hardware.Controllers[Player] & (1 << BUTTON_BIT_UP)) != 0;
+    b8 DownWasDown = (Pico.Hardware.Controllers[Player] & (1 << BUTTON_BIT_DOWN)) != 0;
+
+    r32 Threshold = 0.2f;
+    if (Analog)
+    {
+        UpIsDown = (StickPositionY > Threshold);
+        DownIsDown = (StickPositionY < -Threshold);
+    }
+    else
+    {
+        UpIsDown = (Pad->wButtons & XINPUT_GAMEPAD_DPAD_UP) != 0;
+        DownIsDown = (Pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN) != 0;
+    }
+
+    if (!UpWasDown && UpIsDown)
+        Win32_MenuUp();
+    if (!DownWasDown && DownIsDown)
+        Win32_MenuDown();
+
+    b8 CircleWasDown = (Pico.Hardware.Controllers[Player] & (1 << BUTTON_BIT_CIRCLE)) != 0;
+    b8 CircleIsDown = ((Pad->wButtons & XINPUT_GAMEPAD_Y) != 0) ||
+                      ((Pad->wButtons & XINPUT_GAMEPAD_A) != 0) ||
+                      ((Pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0);
+    if (!CircleWasDown && CircleIsDown)
+    {
+        Win32_MenuSelect();
+    }
+
+    b8 CrossWasDown = (Pico.Hardware.Controllers[Player] & (1 << BUTTON_BIT_CROSS)) != 0;
+    b8 CrossIsDown = ((Pad->wButtons & XINPUT_GAMEPAD_X) != 0) || 
+                     ((Pad->wButtons & XINPUT_GAMEPAD_B) != 0) || 
+                     ((Pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0);
+    if (!CrossWasDown && CrossIsDown)
+    {
+        Win32_MenuClose();
+    }
+}
+
+static void
+Win32_PicoKey(u32 VKCode, b8 IsDown)
 {
     switch (VKCode)
     {
@@ -647,26 +775,25 @@ Win32_PicoInput(u32 VKCode, b8 IsDown)
 }
 
 static void
-Win32_MenuInput(u32 VKCode)
+Win32_MenuKey(u32 VKCode)
 {
     switch (VKCode)
     {
-        case VK_UP:    { GlobalMenuSelection = MAX(GlobalMenuSelection - 1, 0); } break;
-        case VK_DOWN:  { GlobalMenuSelection = MIN(GlobalMenuSelection + 1, 2); } break;
+        case 'E':
+        case VK_UP: { Win32_MenuUp(); } break;
+        case 'D':
+        case VK_DOWN: { Win32_MenuDown(); } break;
+        
+        case 'X':
+        case 'V':
+        case 'M': { Win32_MenuClose(); } break;
+
         case 'W':
         case 'Y':
         case 'C':
         case 'N':
-        case 'Z':
-        case VK_RETURN:
-        {
-            switch (GlobalMenuSelection)
-            {
-                case 2: { GlobalRunning = false; }
-                case 1: { GlobalShouldReset = true; }
-                case 0: { GlobalMenuSelection = 0; GlobalInMenu = false; } break;
-            }
-        } break;
+        case 'Z': 
+        case VK_RETURN: { Win32_MenuSelect(); } break;
     }
 }
 
@@ -698,22 +825,28 @@ Win32_CollectInput()
                         if (Message.hwnd)
                             Win32_ToggleFullscreen(Message.hwnd);
                     }
+                    else if (VKCode == VK_RETURN)
+                    {
+                        if (!GlobalInMenu)
+                        {
+                            GlobalInMenu = true;
+                            break;
+                        }
+                    }
                     if (VKCode == VK_ESCAPE)
                     {
                         GlobalInMenu = !GlobalInMenu;
-                        // if (Win32_IsFullscreen(GlobalWindow))
-                        //     Win32_SetFullscreen(GlobalWindow, false);
-                        // else
-                        //     GlobalRunning = !IsDown;
+                        Pico.Hardware.Keyboards[0] = 0;
+                        Pico.Hardware.Keyboards[1] = 0;
                     }
                 }
                 
                 if (WasDown != IsDown)
                 {
                     if (!GlobalInMenu)
-                        Win32_PicoInput(VKCode, IsDown);
+                        Win32_PicoKey(VKCode, IsDown);
                     else if (IsDown)
-                        Win32_MenuInput(VKCode);
+                        Win32_MenuKey(VKCode);
                 }
              
             } break;
@@ -731,48 +864,28 @@ Win32_CollectInput()
         }
     }
 
-    Pico.Hardware.Controllers[0] = 0;
-    Pico.Hardware.Controllers[1] = 0;
     XINPUT_STATE ControllerState;
     for (u8 P = 0; P < 2; ++P)
     {
         if (XInputGetState(P, &ControllerState) == ERROR_SUCCESS)
         {
             XINPUT_GAMEPAD *Pad = &ControllerState.Gamepad;
-
-            r32 StickPositionX = Win32_UpdateStickValue(Pad->sThumbLX, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
-            r32 StickPositionY = Win32_UpdateStickValue(Pad->sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
             
-            b8 Analog = false;
-            if ((StickPositionX != 0.0f) || (StickPositionY != 0.0f))
-                Analog = true;
+            if ((Pad->wButtons & XINPUT_GAMEPAD_START) != 0 &&
+                (Pico.Hardware.Controllers[P] & (1 << BUTTON_BIT_START)) == 0)
+                GlobalInMenu = !GlobalInMenu;
 
-            r32 Threshold = 0.2f;
-            if (Analog)
-            {
-                if (StickPositionY > Threshold) Win32_UpdateButton(P, BUTTON_BIT_UP,    1);
-                if (StickPositionY <-Threshold) Win32_UpdateButton(P, BUTTON_BIT_DOWN,  1);
-                if (StickPositionX <-Threshold) Win32_UpdateButton(P, BUTTON_BIT_LEFT,  1);
-                if (StickPositionX > Threshold) Win32_UpdateButton(P, BUTTON_BIT_RIGHT, 1);
-            }
-            else
-            {
-                if ((Pad->wButtons & XINPUT_GAMEPAD_DPAD_UP)    != 0) Win32_UpdateButton(P, BUTTON_BIT_UP,    1);
-                if ((Pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)  != 0) Win32_UpdateButton(P, BUTTON_BIT_DOWN,  1);
-                if ((Pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)  != 0) Win32_UpdateButton(P, BUTTON_BIT_LEFT,  1);
-                if ((Pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) != 0) Win32_UpdateButton(P, BUTTON_BIT_RIGHT, 1);
-            }
-
-            if ((Pad->wButtons & XINPUT_GAMEPAD_Y) != 0)              Win32_UpdateButton(P, BUTTON_BIT_CIRCLE, 1);
-            if ((Pad->wButtons & XINPUT_GAMEPAD_A) != 0)              Win32_UpdateButton(P, BUTTON_BIT_CIRCLE, 1);
-            if ((Pad->wButtons & XINPUT_GAMEPAD_X) != 0)              Win32_UpdateButton(P, BUTTON_BIT_CROSS, 1);
-            if ((Pad->wButtons & XINPUT_GAMEPAD_B) != 0)              Win32_UpdateButton(P, BUTTON_BIT_CROSS, 1);
-            if ((Pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0)  Win32_UpdateButton(P, BUTTON_BIT_CIRCLE, 1);
-            if ((Pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0) Win32_UpdateButton(P, BUTTON_BIT_CROSS, 1);
-
-            //Win32_UpdateButton(BUTTON_BIT_CIRCLE, (Pad->wButtons & XINPUT_GAMEPAD_START) != 0);
-            //Win32_UpdateButton(BUTTON_BIT_CIRCLE, (Pad->wButtons & XINPUT_GAMEPAD_BACK) != 0);
+            if (GlobalInMenu)
+                Win32_MenuPad(Pad, P);
+            
+            Pico.Hardware.Controllers[P] = 0;
+            Win32_PicoPad(Pad, P);
         }
+        else
+        {
+            Pico.Hardware.Controllers[P] = 0;
+        }
+                
     }
 }
 
