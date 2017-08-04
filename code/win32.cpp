@@ -124,7 +124,7 @@ Memory_Copy(void *Dest, void *Source, mi Num)
 }
 
 static void*
-Win32_AllocMemory(u64 Size)
+Win32_AllocMemory(size_t Size)
 {
     return VirtualAlloc(0, Size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
 }
