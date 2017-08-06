@@ -1,6 +1,6 @@
 #define CART_NAME "lemonhunter"
 
-#define WINPICO_VERSION "l0.1"
+#define WINPICO_VERSION "l0.1.1"
 
 #include <stdint.h>
 
@@ -832,6 +832,8 @@ Win32_CollectInput()
                         if (!GlobalInMenu)
                         {
                             GlobalInMenu = true;
+                            Pico.Hardware.Keyboards[0] = 0;
+                            Pico.Hardware.Keyboards[1] = 0;
                             break;
                         }
                     }
